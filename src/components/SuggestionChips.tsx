@@ -5,10 +5,12 @@ interface SuggestionChipsProps {
 }
 
 const suggestions = [
-  "What is CS 111?",
+  "What's my major's requirements?",
+  "How do I graduate on time?",
+  "What courses should I take first?",
+  "What are the best CS electives?",
   "Prerequisites for CS 112",
-  "Compare CS 111 and CS 112",
-  "CS courses in Newark",
+  "Compare intro courses",
 ];
 
 export const SuggestionChips = ({ onSelect }: SuggestionChipsProps) => {
