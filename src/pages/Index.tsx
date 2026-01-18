@@ -3,9 +3,10 @@ import { ChatMessage, Message } from "@/components/ChatMessage";
 import { ChatInput } from "@/components/ChatInput";
 import { CampusSelector } from "@/components/CampusSelector";
 import { SuggestionChips } from "@/components/SuggestionChips";
-import { generateResponse } from "@/lib/chatResponses";
+import { streamChat } from "@/lib/streamChat";
 import { GraduationCap } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { toast } from "sonner";
 
 const Index = () => {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -34,20 +35,46 @@ const Index = () => {
     setMessages((prev) => [...prev, userMessage]);
     setIsTyping(true);
 
-    // Simulate AI thinking time
-    await new Promise((resolve) => setTimeout(resolve, 800));
-
-    const response = generateResponse(content, selectedCampus);
+    let assistantContent = "";
     
-    const assistantMessage: Message = {
-      id: (Date.now() + 1).toString(),
-      role: "assistant",
-      content: response,
-      timestamp: new Date(),
-    };
+    const chatMessages = [...messages, userMessage].map(m => ({
+      role: m.role,
+      content: m.content,
+    }));
 
-    setIsTyping(false);
-    setMessages((prev) => [...prev, assistantMessage]);
+    await streamChat({
+      messages: chatMessages,
+      campus: selectedCampus,
+      onDelta: (chunk) => {
+        assistantContent += chunk;
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          if (last?.role === "assistant") {
+            return prev.map((m, i) =>
+              i === prev.length - 1 ? { ...m, content: assistantContent } : m
+            );
+          }
+          return [
+            ...prev,
+            {
+              id: (Date.now() + 1).toString(),
+              role: "assistant" as const,
+              content: assistantContent,
+              timestamp: new Date(),
+            },
+          ];
+        });
+      },
+      onDone: () => {
+        setIsTyping(false);
+      },
+      onError: (error) => {
+        setIsTyping(false);
+        toast.error(error);
+        // Remove the user message if we got an error
+        setMessages((prev) => prev.filter((m) => m.id !== userMessage.id));
+      },
+    });
   };
 
   return (
@@ -61,7 +88,7 @@ const Index = () => {
             </div>
             <div>
               <h1 className="font-semibold text-foreground">Rutgers Course Assistant</h1>
-              <p className="text-xs text-muted-foreground">Your guide to course planning</p>
+              <p className="text-xs text-muted-foreground">Powered by official Rutgers data</p>
             </div>
           </div>
           <CampusSelector value={selectedCampus} onChange={setSelectedCampus} />
@@ -79,8 +106,11 @@ const Index = () => {
               <h2 className="text-2xl font-semibold text-foreground mb-2">
                 Welcome to Course Chat
               </h2>
-              <p className="text-muted-foreground mb-8 max-w-md">
-                Ask me anything about Rutgers courses, prerequisites, schedules, and more. I'm here to help you plan your academic journey.
+              <p className="text-muted-foreground mb-4 max-w-md">
+                Ask me anything about Rutgers courses. I source information directly from the official Schedule of Classes.
+              </p>
+              <p className="text-xs text-muted-foreground mb-8 max-w-md">
+                Always verify course information at sims.rutgers.edu/webreg before registration.
               </p>
               <SuggestionChips onSelect={handleSendMessage} />
             </div>
@@ -89,7 +119,7 @@ const Index = () => {
               {messages.map((message) => (
                 <ChatMessage key={message.id} message={message} />
               ))}
-              {isTyping && (
+              {isTyping && messages[messages.length - 1]?.role !== "assistant" && (
                 <div className="flex gap-3">
                   <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center flex-shrink-0">
                     <GraduationCap className="w-4 h-4 text-foreground" />
@@ -119,7 +149,7 @@ const Index = () => {
           )}
           <ChatInput onSend={handleSendMessage} disabled={isTyping} />
           <p className="text-xs text-muted-foreground text-center mt-3">
-            Demo version with sample course data. Ask about CS, MATH courses, and more.
+            Data sourced from Rutgers Schedule of Classes. Verify before registration.
           </p>
         </div>
       </div>
